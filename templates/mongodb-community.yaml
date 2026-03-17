@@ -1,0 +1,106 @@
+{{- if index .Values "mongodbCommunity" "enabled" }}
+{{- $existingSecret := index .Values "mongodbCommunity" "auth" "existingSecret" | default (printf "%s-mongodb-auth" .Release.Name) }}
+---
+apiVersion: mongodbcommunity.mongodb.com/v1
+kind: MongoDBCommunity
+metadata:
+  name: {{ .Release.Name }}-mongodb
+  labels: {{- include "stackstorm-ha.labels" (list $ "mongodb") | nindent 4 }}
+spec:
+  members: {{ index .Values "mongodbCommunity" "members" }}
+  type: ReplicaSet
+  version: {{ index .Values "mongodbCommunity" "version" | quote }}
+  {{- if index .Values "mongodbCommunity" "auth" "enabled" }}
+  security:
+    authentication:
+      modes: ["SCRAM"]
+  users:
+    - name: {{ index .Values "mongodbCommunity" "auth" "username" }}
+      db: {{ index .Values "mongodbCommunity" "auth" "database" }}
+      passwordSecretRef:
+        name: {{ $existingSecret }}
+        key: {{ index .Values "mongodbCommunity" "auth" "passwordKey" }}
+      roles:
+        - name: readWrite
+          db: {{ index .Values "mongodbCommunity" "auth" "database" }}
+        - name: clusterAdmin
+          db: admin
+      scramCredentialsSecretName: {{ .Release.Name }}-mongodb-scram
+    - name: admin
+      db: admin
+      passwordSecretRef:
+        name: {{ $existingSecret }}
+        key: {{ index .Values "mongodbCommunity" "auth" "rootPasswordKey" }}
+      roles:
+        - name: root
+          db: admin
+      scramCredentialsSecretName: {{ .Release.Name }}-mongodb-admin-scram
+  {{- end }}
+  {{- if index .Values "mongodbCommunity" "tls" "enabled" }}
+    tls:
+      enabled: true
+      {{- if index .Values "mongodbCommunity" "tls" "certificateKeySecretRef" }}
+      certificateKeySecretRef:
+        name: {{ index .Values "mongodbCommunity" "tls" "certificateKeySecretRef" }}
+      {{- end }}
+      {{- if index .Values "mongodbCommunity" "tls" "caCertificateSecretRef" }}
+      caCertificateSecretRef:
+        name: {{ index .Values "mongodbCommunity" "tls" "caCertificateSecretRef" }}
+      {{- end }}
+  {{- end }}
+  additionalMongodConfig:
+    storage.wiredTiger.engineConfig.journalCompressor: snappy
+    net.compression.compressors: snappy
+  {{- if index .Values "mongodbCommunity" "replicaSetName" }}
+    replication.replSetName: {{ index .Values "mongodbCommunity" "replicaSetName" }}
+  {{- end }}
+  statefulSet:
+    spec:
+      {{- if or (index .Values "mongodbCommunity" "nodeSelector") (index .Values "mongodbCommunity" "affinity") (index .Values "mongodbCommunity" "tolerations") (index .Values "mongodbCommunity" "resources") }}
+      template:
+        spec:
+          {{- with index .Values "mongodbCommunity" "nodeSelector" }}
+          nodeSelector: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with index .Values "mongodbCommunity" "affinity" }}
+          affinity: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with index .Values "mongodbCommunity" "tolerations" }}
+          tolerations: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if index .Values "mongodbCommunity" "resources" }}
+          containers:
+            - name: mongod
+              {{- with index .Values "mongodbCommunity" "resources" }}
+              resources: {{- toYaml . | nindent 16 }}
+              {{- end }}
+            - name: mongodb-agent
+              {{- with index .Values "mongodbCommunity" "resources" }}
+              resources: {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- end }}
+      {{- end }}
+      {{- if index .Values "mongodbCommunity" "persistence" "enabled" }}
+      volumeClaimTemplates:
+        - metadata:
+            name: data-volume
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            {{- if index .Values "mongodbCommunity" "persistence" "storageClassName" }}
+            storageClassName: {{ index .Values "mongodbCommunity" "persistence" "storageClassName" | quote }}
+            {{- end }}
+            resources:
+              requests:
+                storage: {{ index .Values "mongodbCommunity" "persistence" "storage" }}
+        - metadata:
+            name: logs-volume
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            {{- if index .Values "mongodbCommunity" "persistence" "storageClassName" }}
+            storageClassName: {{ index .Values "mongodbCommunity" "persistence" "storageClassName" | quote }}
+            {{- end }}
+            resources:
+              requests:
+                storage: 2Gi
+      {{- end }}
+{{- end }}

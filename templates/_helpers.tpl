@@ -115,6 +115,14 @@ Usage: "{{ include "stackstorm-ha.nested" (list . "mongodb" "mongodb.fullname") 
 Generate comma-separated list of nodes for MongoDB-HA connection string, based on number of replicas and service name
 */}}
 {{- define "stackstorm-ha.mongodb-nodes" -}}
+{{- if index .Values "mongodbCommunity" "enabled" }}
+{{- $replicas := (int (index .Values "mongodbCommunity" "members")) }}
+{{- $mongo_name := print .Release.Name "-mongodb" }}
+{{- range $index0 := until $replicas -}}
+  {{- $index1 := $index0 | add1 -}}
+  {{- $mongo_name }}-{{ $index0 }}.{{ $mongo_name }}-svc.{{ $.Release.Namespace }}.svc.{{ $.Values.clusterDomain }}{{ if ne $index1 $replicas }},{{ end }}
+{{- end -}}
+{{- else if index .Values "mongodb" "enabled" }}
 {{- $replicas := (int (index .Values "mongodb" "replicaCount")) }}
 {{- $architecture := (index .Values "mongodb" "architecture" ) }}
 {{- $mongo_fullname := include "stackstorm-ha.nested" (list $ "mongodb" "mongodb.fullname") }}
@@ -127,31 +135,23 @@ Generate comma-separated list of nodes for MongoDB-HA connection string, based o
   {{- end -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
 
 {{/*
-Generate list of nodes for Redis with Sentinel connection string, based on number of replicas and service name
+Generate connection string for Valkey cluster
 */}}
-{{- define "stackstorm-ha.redis-nodes" -}}
-{{- if not .Values.redis.sentinel.enabled }}
-{{- fail "value for redis.sentinel.enabled MUST be true" }}
+{{- define "stackstorm-ha.valkey-connection" -}}
+{{- if .Values.valkey.enabled }}
+{{- $valkeyName := print .Release.Name "-valkey" }}
+{{- $password := "" }}
+{{- if .Values.valkey.auth.existingSecret }}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.valkey.auth.existingSecret }}
+{{- if $secret }}
+{{- $password = index $secret.data .Values.valkey.auth.passwordKey | b64dec }}
 {{- end }}
-{{- $replicas := (int (index .Values "redis" "cluster" "slaveCount")) }}
-{{- $master_name := (index .Values "redis" "sentinel" "masterSet") }}
-{{- $sentinel_port := (index .Values "redis" "sentinel" "port") }}
-{{- range $index0 := until $replicas -}}
-  {{- if eq $index0 0 -}}
-    {{ $.Release.Name }}-redis-node-{{ $index0 }}.{{ $.Release.Name }}-redis-headless.{{ $.Release.Namespace }}.svc.{{ $.Values.clusterDomain }}:{{ $sentinel_port }}?sentinel={{ $master_name }}
-  {{- else -}}
-    &sentinel_fallback={{ $.Release.Name }}-redis-node-{{ $index0 }}.{{ $.Release.Name }}-redis-headless.{{ $.Release.Namespace }}.svc.{{ $.Values.clusterDomain }}:{{ $sentinel_port }}
-  {{- end -}}
-{{- end -}}
-{{- end -}}
-
-{{- define "stackstorm-ha.redis-password" -}}
-{{- if not .Values.redis.sentinel.enabled }}
-{{- fail "value for redis.sentinel.enabled MUST be true" }}
 {{- end }}
-{{- if not (empty .Values.redis.password)}}:{{ .Values.redis.password }}@{{- end }}
+{{- if $password }}:{{ $password }}@{{ end }}{{ $valkeyName }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:6379
+{{- end }}
 {{- end -}}
 
 {{/*
@@ -198,7 +198,23 @@ Reduce duplication of the st2.*.conf volume details
 {{- end -}}
 
 {{- define "stackstorm-ha.init-containers-wait-for-db" -}}
-{{- if index .Values "mongodb" "enabled" }}
+{{- if index .Values "mongodbCommunity" "enabled" }}
+- name: wait-for-db
+  image: {{ template "stackstorm-ha.utilityImage" . }}
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
+  command:
+    - 'sh'
+    - '-c'
+    - >
+      until nc -z -w 2 {{ $.Release.Name }}-mongodb-svc 27017 && echo mongodb ok;
+        do
+          echo 'Waiting for MongoDB Connection...'
+          sleep 2;
+      done
+  {{- with .Values.securityContext }}
+  securityContext: {{- toYaml . | nindent 8 }}
+  {{- end }}
+{{- else if index .Values "mongodb" "enabled" }}
 {{- $mongodb_port := (int (index .Values "mongodb" "service" "port")) }}
 - name: wait-for-db
   image: {{ template "stackstorm-ha.utilityImage" . }}

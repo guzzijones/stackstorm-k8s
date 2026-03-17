@@ -1024,127 +1024,320 @@ jobs:
     #     - custom_pack.warn_about_upgrade
 
 ##
-## MongoDB HA configuration (3rd party chart dependency)
+## MongoDB Community Operator Configuration
 ##
-## For values.yaml reference:
-## https://github.com/bitnami/charts/tree/master/bitnami/mongodb
+## PREREQUISITE: MongoDB Community Operator must be installed in the cluster
+## Install CRDs: kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/mongodb/mongodb-kubernetes/1.7.0/public/crds.yaml 
+## Install Operator: kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/mongodb/mongodb-kubernetes/1.7.0/public/mongodb-kubernetes.yaml
 ##
-mongodb:
+## For MongoDBCommunity CRD reference:
+## https://github.com/mongodb/mongodb-kubernetes-operator/blob/master/docs/deploy-configure.md
+##
+mongodbCommunity:
   # Change to `false` to disable in-cluster mongodb deployment.
   # Specify your external [database] connection parameters under st2.config
   enabled: true
-  image:
-    # StackStorm currently supports maximum MongoDB v4.4
-    tag: "4.4"
-  # MongoDB architecture. Allowed values: standalone or replicaset
-  architecture: replicaset
+  
+  # MongoDB version - StackStorm currently supports maximum MongoDB v4.4
+  version: "7.0.22"
+  
+  # Number of MongoDB replicas in the replica set
+  members: 3
+  
   # Name of the replica set
-  # Ignored when mongodb.architecture=standalone
   replicaSetName: rs0
-  # Number of MongoDB replicas to deploy.
-  # Ignored when mongodb.architecture=standalone
-  replicaCount: 3
+  
+  # Authentication configuration
   auth:
     enabled: true
-    # NB! It's highly recommended to change ALL insecure auth defaults!
-    #
-    # Stackstorm user that services will make connections using
-    username: "st2-admin"
-    # Stackstorm user that services will make connections using
-    password: "XeL5Rxwj7F0Wt43tFZVTN7H8Sg5XDHmK"
-    # Root password for the database
-    rootPassword: "8fAzdnksdzPFUWm4a68EfY7nMhBPaa"
-    # Initial database for stackstorm
+    # Database for StackStorm
     database: "st2"
-    # Minimal key length is 6 symbols and may only contain characters in the base64 set.
-    replicaSetKey: "82PItDpqroti5RngOA7UqbHH7c6bFUwy"
-    # Whether to enable the arbiter
-  arbiter:
+    # Username for StackStorm connections
+    username: "st2-admin"
+    
+    # IMPORTANT: Credentials should be stored in a Kubernetes secret, not in values.yaml
+    # Create the secret before installing this chart:
+    #
+    # Example using kubectl:
+    #   kubectl create secret generic mongodb-credentials \
+    #     --from-literal=password=YOUR_SECURE_ST2_PASSWORD \
+    #     --from-literal=rootPassword=YOUR_SECURE_ROOT_PASSWORD
+    #
+    # Name of existing Kubernetes secret containing MongoDB credentials
+    existingSecret: ""  # e.g., "mongodb-credentials"
+    # Keys within the secret (defaults shown below)
+    passwordKey: "password"
+    rootPasswordKey: "rootPassword"
+  
+  # Persistence configuration
+  persistence:
+    enabled: true
+    # Storage size per MongoDB pod
+    storage: "10Gi"
+    # Optional: specify storageClassName (uses cluster default when empty)
+    storageClassName: ""
+  
+  # TLS configuration (disabled by default)
+  tls:
     enabled: false
+    # When enabled, you must provide these secrets containing TLS certificates:
+    # certificateKeySecretRef: mongodb-tls-cert
+    # caCertificateSecretRef: mongodb-tls-ca
+    # See: https://github.com/mongodb/mongodb-kubernetes-operator/blob/master/docs/deploy-configure.md#tls-configuration
+  
+  # Resource requests and limits for MongoDB pods
   resources: {}
+    # limits:
+    #   cpu: 2000m
+    #   memory: 2Gi
+    # requests:
+    #   cpu: 1000m
+    #   memory: 2Gi
+  
+  # Pod placement controls
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
 
 ##
-## RabbitMQ configuration (3rd party chart dependency)
+## RabbitMQ configuration (using RabbitMQ Cluster Operator)
 ##
-## For values.yaml reference:
-## https://github.com/bitnami/charts/tree/master/bitnami/rabbitmq
+## PREREQUISITE: RabbitMQ Cluster Operator must be installed in the cluster
+## Install with: kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml
+##
+## For RabbitmqCluster spec reference:
+## https://www.rabbitmq.com/kubernetes/operator/using-operator.html
 ##
 rabbitmq:
   # Change to `false` to disable in-cluster rabbitmq deployment.
   # Specify your external [messaging] connection parameters under st2.config
   enabled: true
-  clustering:
-    # On unclean cluster restarts forceBoot is required to cleanup Mnesia tables (see: https://github.com/helm/charts/issues/13485)
-    # Use it only if you prefer availability over integrity.
-    forceBoot: true
-  # Authentication Details
+  
+  # Number of RabbitMQ nodes in the cluster (replicas)
+  replicas: 3
+  
+  # Authentication configuration
+  # If existingSecret is provided, the operator will use it for RabbitMQ credentials
+  # If empty, the operator will auto-generate credentials
+  # 
+  # The secret must contain three keys: username, password, erlangCookie
+  # 
+  # Example: Create the secret before installing this chart:
+  #   kubectl create secret generic rabbitmq-credentials \
+  #     --from-literal=username=admin \
+  #     --from-literal=password=YOUR_SECURE_PASSWORD \
+  #     --from-literal=erlangCookie=YOUR_SECURE_ERLANG_COOKIE
+  #
+  # The erlangCookie should be an alphanumeric string, typically 20-40 characters.
+  # Generate a secure erlangCookie with: openssl rand -base64 32
   auth:
-    username: admin
-    # TODO: Use default random 10 character password, but need to fetch this string for use by downstream services
-    password: 9jS+w1u07NbHtZke1m+jW4Cj
-    # Up to 255 character string, should be fixed so that re-deploying the chart does not fail (see: https://github.com/helm/charts/issues/12371)
-    # NB! It's highly recommended to change the default insecure rabbitmqErlangCookie value!
-    erlangCookie: 8MrqQdCQ6AQ8U3MacSubHE5RqkSfvNaRHzvxuFcG
-  # RabbitMQ Memory high watermark. See: http://www.rabbitmq.com/memory.html
-  # Default values might not be enough for StackStorm deployment to work properly. We recommend to adjust these settings for you needs as well as enable Pod memory limits via "resources".
-  #rabbitmqMemoryHighWatermark: 512MB
-  #rabbitmqMemoryHighWatermarkType: absolute
+    existingSecret: ""  # e.g., "rabbitmq-credentials"
+  
+  # Persistence configuration
   persistence:
     enabled: true
-  # Enable Queue Mirroring between nodes
-  # See https://www.rabbitmq.com/ha.html
-  # This code block is commented out waiting for
-  # https://github.com/bitnami/charts/issues/4635
-  loadDefinition:
-    enabled: true
-    existingSecret: "{{ .Release.Name }}-rabbitmq-definitions"
-  extraConfiguration: |
-    load_definitions = /app/rabbitmq-definitions.json
-  # We recommend to set the memory limit for RabbitMQ-HA Pods in production deployments.
-  # Make sure to also change the rabbitmqMemoryHighWatermark following the formula:
-  # rabbitmqMemoryHighWatermark = 0.4 * resources.limits.memory
+    # Storage size per RabbitMQ pod
+    storage: "10Gi"
+    # Optional: specify storageClassName
+    # storageClassName: ""
+    # Alternative to persistent storage: use emptyDir (ephemeral storage)
+    # When emptyDir is defined, it takes precedence over persistent storage
+    emptyDir: {}
+      # medium: ""  # "" (default) or "Memory" for tmpfs
+      # sizeLimit: ""  # e.g., "1Gi"
+  
+  # Optional: Override RabbitMQ docker image
+  # image: rabbitmq:3.13-management
+  
+  # Optional: Image pull secrets for private registries
+  imagePullSecrets: []
+    # - name: my-registry-secret
+  
+  # Resource requests and limits for RabbitMQ pods
+  # We recommend setting memory limits in production deployments
   resources: {}
-  # number of replicas in the rabbit cluster
-  replicaCount: 3
-  # As RabbitMQ enabled prometheus operator monitoring by default, disable it for non-prometheus users
-  metrics:
+    # limits:
+    #   cpu: 2000m
+    #   memory: 2Gi
+    # requests:
+    #   cpu: 1000m
+    #   memory: 2Gi
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    annotations: {}
+    # IP family policy for dual-stack support
+    # Options: "SingleStack", "PreferDualStack", "RequireDualStack"
+    ipFamilyPolicy: ""
+    # Additional labels for the service
+    labels: {}
+  
+  # RabbitMQ configuration files
+  # Additional RabbitMQ configuration (rabbitmq.conf format)
+  # See: https://www.rabbitmq.com/configure.html
+  additionalConfig: |
+    # Enable queue mirroring for HA
+    # cluster_partition_handling = autoheal
+  
+  # Advanced RabbitMQ configuration (advanced.config format)
+  # See: https://www.rabbitmq.com/configure.html#advanced-config-file
+  advancedConfig: ""
+  
+  # Environment variable configuration (rabbitmq-env.conf format)
+  # See: https://www.rabbitmq.com/configure.html#customise-environment
+  envConfig: ""
+  
+  # Erlang inet configuration (erl_inetrc format)
+  # See: https://www.erlang.org/doc/apps/erts/inet_cfg.html
+  erlangInetConfig: ""
+  
+  # Additional RabbitMQ plugins to enable
+  # Default plugins (rabbitmq_management, rabbitmq_prometheus, rabbitmq_peer_discovery_k8s) are always enabled
+  additionalPlugins: []
+    # - rabbitmq_shovel
+    # - rabbitmq_federation
+  
+  # TLS configuration
+  tls:
     enabled: false
+    # Name of secret containing tls.crt and tls.key
+    secretName: ""
+    # Name of secret containing ca.crt (optional)
+    caSecretName: ""
+    # Disable non-TLS listeners when TLS is enabled
+    disableNonTLSListeners: false
+  
+  # Secret backend configuration
+  # By default, uses externalSecret (Kubernetes secret)
+  # Alternatively, can use Vault for credential management
+  secretBackend:
+    # Vault configuration (alternative to externalSecret)
+    vault:
+      enabled: false
+      # Vault role for RabbitMQ
+      role: ""
+      # Annotations for Vault agent
+      annotations: {}
+      # Path to default user credentials in Vault
+      defaultUserPath: ""
+      # Image for default user updater sidecar
+      defaultUserUpdaterImage: ""
+      # TLS configuration for Vault
+      tls: {}
+  
+  # Override configurations for advanced customization
+  # These allow fine-grained control over the generated resources
+  override: {}
+    # Override service configuration
+    #service: {}
+      # spec:
+      #   type: LoadBalancer
+      #   ports:
+      #     - name: additional-port
+      #       port: 15672
+    # Override statefulSet configuration
+    #statefulSet:
+    #  spec:
+    #    template:
+    #      spec:
+    #        # nodeSelector should be defined here for proper CRD structure
+    #        nodeSelector: {}
+  
+  # Lifecycle settings
+  # Grace period for pod termination (default: 604800 = 7 days)
+  terminationGracePeriodSeconds: 604800
+  # Delay before starting RabbitMQ (default: 30 seconds)
+  delayStartSeconds: 30
+  
+  # Automatically enable all feature flags on startup
+  autoEnableAllFeatureFlags: false
+  
+  # Skip post-deployment steps performed by the operator
+  skipPostDeploySteps: false
+  
+  # Pod placement controls
+  # NOTE: nodeSelector is deprecated at this level. Use override.statefulSet.spec.template.spec.nodeSelector instead
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
 
 ##
-## Redis HA configuration (3rd party chart dependency)
+## Valkey Configuration (using Valkey Helm Chart)
 ##
-## For values.yaml reference:
-## https://github.com/bitnami/charts/tree/master/bitnami/redis
+## For Valkey chart reference:
+## https://github.com/valkey-io/valkey-helm
 ##
-redis:
-  # Change to `false` to disable in-cluster redis deployment.
+valkey:
+  # Change to `false` to disable in-cluster valkey deployment.
   # Specify your external [coordination] connection parameters under st2.config
   enabled: true
-  # By default the cluster is enabled for the subchart.
-  # We just need replica count here to ensure it is HA
-  cluster:
-    slaveCount: 3
-  # Sentinel settings. Sentinel is enabled for better resiliency.
-  # This is highly recommended as per tooz library documentation.
-  # Hence, the chart requires the setting.
-  # https://docs.openstack.org/tooz/latest/user/drivers.html#redis
-  # https://github.com/bitnami/charts/tree/master/bitnami/redis#master-slave-with-sentinel
-  sentinel:
+  
+  # Valkey image configuration
+  image:
+    registry: "docker.io"
+    repository: valkey/valkey
+    tag: ""  # Uses chart's appVersion by default
+    pullPolicy: IfNotPresent
+  
+  # Authentication configuration
+  auth:
     enabled: true
-    # DO NOT SET sentinel.usePassword, the tooz driver cannot connect to a password protected sentinel
-    # however it can connect to a password protected redis that is being managed by sentinel
-    # usePassword: false
-    # Enable or disable static sentinel IDs for each replicas
-    # If disabled each sentinel will generate a random id at startup
-    # If enabled, each replicas will have a constant ID on each start-up
-    staticID: true
-  # if redis.usePassword is true, you can set the password here
-  # password: mysupersecretpassword
-  networkPolicy:
-    enabled: false
-  usePassword: false
-  metrics:
-    enabled: false
+    # IMPORTANT: Credentials should be stored in a Kubernetes secret, not in values.yaml
+    # Create the secret before installing this chart:
+    #
+    # Example using kubectl:
+    #   kubectl create secret generic valkey-credentials \
+    #     --from-literal=default-password=YOUR_SECURE_PASSWORD
+    #
+    # Name of existing Kubernetes secret containing Valkey credentials
+    usersExistingSecret: ""  # e.g., "valkey-credentials"
+    
+    # ACL users configuration
+    # The 'default' user must be defined when auth is enabled
+    aclUsers:
+      default:
+        permissions: "~* &* +@all"
+        password: ""  # Set this or use usersExistingSecret
+        # passwordKey: "default-password"  # Key in usersExistingSecret
+  
+  # Replica configuration for HA coordination backend
+  replica:
+    enabled: true
+    # Number of replica instances (total pods = replicas + 1 master)
+    replicas: 2
+    # Username for replicas to authenticate to master
+    replicationUser: "default"
+    # Persistence configuration (required for replicas)
+    persistence:
+      size: "10Gi"
+      storageClass: ""  # Uses cluster default if empty
+      accessModes:
+        - ReadWriteOnce
+    # Read service configuration
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 6379
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 6379
+  
+  # Resource requests and limits
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  
+  # Pod placement controls
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
 
 ##
 ## Settings to be applied to all stackstorm-ha pods

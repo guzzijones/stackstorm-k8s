@@ -215,6 +215,14 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
         volumeMounts:
         {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
         {{- if ne "disable" (default "" .Values.st2.datastore_crypto_key) }}
@@ -600,6 +608,14 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
         volumeMounts:
         {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
         {{- if ne "disable" (default "" .Values.st2.datastore_crypto_key) }}
@@ -718,6 +734,14 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
         volumeMounts:
         {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
         {{- range .Values.st2timersengine.extra_volumes }}
@@ -826,6 +850,15 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
+ 
         volumeMounts:
         {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
         {{- if ne "disable" (default "" .Values.st2.datastore_crypto_key) }}
@@ -945,6 +978,15 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
+ 
         volumeMounts:
         {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
         {{- if ne "disable" (default "" .Values.st2.datastore_crypto_key) }}
@@ -1062,6 +1104,15 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
+ 
         volumeMounts:
         {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
         {{- range .Values.st2notifier.extra_volumes }}
@@ -1245,6 +1296,15 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ $.Release.Name }}-st2-urls
+        {{- if and $.Values.rabbitmq.enabled $.Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ $.Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and $.Values.mongodbCommunity.enabled $.Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ $.Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
+ 
         {{- range $sensor.envFromSecrets }}
         - secretRef:
             name: {{ . }}
@@ -1401,6 +1461,15 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
+ 
         {{- range .Values.st2actionrunner.envFromSecrets }}
         - secretRef:
             name: {{ . }}
@@ -1536,6 +1605,15 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-st2-urls
+        {{- if and .Values.rabbitmq.enabled .Values.rabbitmq.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.rabbitmq.auth.existingSecret }}
+        {{- end }}
+        {{- if and .Values.mongodbCommunity.enabled .Values.mongodbCommunity.auth.existingSecret }}
+        - secretRef:
+            name: {{ .Values.mongodbCommunity.auth.existingSecret }}
+        {{- end }}
+ 
         volumeMounts:
         {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
         {{- range .Values.st2garbagecollector.extra_volumes }}

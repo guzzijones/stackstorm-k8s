@@ -15,15 +15,26 @@ data:
     [system_user]
     user = {{ .Values.st2.system_user.user }}
     ssh_key_file = {{ tpl .Values.st2.system_user.ssh_key_file . }}
-    {{- if index .Values "redis" "enabled" }}
+    {{- if index .Values "valkey" "enabled" }}
     [coordination]
-    url = redis://{{ template "stackstorm-ha.redis-password" $ }}{{ template "stackstorm-ha.redis-nodes" $ }}
+    url = redis://{{ template "stackstorm-ha.valkey-connection" $ }}
     {{- end }}
     {{- if index .Values "rabbitmq" "enabled" }}
     [messaging]
-    url = amqp://{{ required "rabbitmq.auth.username is required!" (index .Values "rabbitmq" "auth" "username") }}:{{ required "rabbitmq.auth.password is required!" (index .Values "rabbitmq" "auth" "password") }}@{{ .Release.Name }}-rabbitmq:5672{{ required "rabbitmq.ingress.path is required!" (index .Values "rabbitmq" "ingress" "path") }}
+    url = amqp://${RABBITMQ_USERNAME}:${RABBITMQ_PASSWORD}@{{ .Release.Name }}-rabbitmq:5672/
     {{- end }}
-    {{- if index .Values "mongodb" "enabled" }}
+    {{- if index .Values "mongodbCommunity" "enabled" }}
+    [database]
+    {{- if index .Values "mongodbCommunity" "auth" "enabled" }}
+    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/{{ required "mongodbCommunity.auth.database is required!" (index .Values "mongodbCommunity" "auth" "database") }}?authSource={{ required "mongodbCommunity.auth.database is required!" (index .Values "mongodbCommunity" "auth" "database") }}&replicaSet={{ index .Values "mongodbCommunity" "replicaSetName" }}
+    username = {{ required "mongodbCommunity.auth.username is required!" (index .Values "mongodbCommunity" "auth" "username") }}
+    password = ${MONGODB_PASSWORD}
+    db_name = {{ required "mongodbCommunity.auth.database is required!" (index .Values "mongodbCommunity" "auth" "database") }}
+    {{- else }}
+    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/?replicaSet={{ index .Values "mongodbCommunity" "replicaSetName" }}
+    {{- end }}
+    port = 27017
+    {{- else if index .Values "mongodb" "enabled" }}
     [database]
     {{- if index .Values "mongodb" "auth" "enabled" }}
     host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/{{ required "mongodb.auth.database is required!" (index .Values "mongodb" "auth" "database") }}?authSource={{ required "mongodb.auth.database is required!" (index .Values "mongodb" "auth" "database") }}&replicaSet={{ index .Values "mongodb" "replicaSetName" }}

@@ -1,0 +1,172 @@
+{{- if .Values.rabbitmq.enabled }}
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: {{ .Release.Name }}-rabbitmq
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-rabbitmq
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.rabbitmq.replicas | default 3 }}
+  
+  {{- if .Values.rabbitmq.image }}
+  image: {{ .Values.rabbitmq.image }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml .Values.rabbitmq.imagePullSecrets | nindent 4 }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.resources }}
+  resources:
+    {{- toYaml .Values.rabbitmq.resources | nindent 4 }}
+  {{- end }}
+  
+  rabbitmq:
+    {{- if .Values.rabbitmq.additionalConfig }}
+    additionalConfig: |
+      {{- .Values.rabbitmq.additionalConfig | nindent 6 }}
+    {{- end }}
+    
+    {{- if .Values.rabbitmq.advancedConfig }}
+    advancedConfig: |
+      {{- .Values.rabbitmq.advancedConfig | nindent 6 }}
+    {{- end }}
+    
+    {{- if .Values.rabbitmq.envConfig }}
+    envConfig: |
+      {{- .Values.rabbitmq.envConfig | nindent 6 }}
+    {{- end }}
+    
+    {{- if .Values.rabbitmq.erlangInetConfig }}
+    erlangInetConfig: |
+      {{- .Values.rabbitmq.erlangInetConfig | nindent 6 }}
+    {{- end }}
+    
+    {{- if .Values.rabbitmq.additionalPlugins }}
+    additionalPlugins:
+      {{- toYaml .Values.rabbitmq.additionalPlugins | nindent 6 }}
+    {{- end }}
+  
+  persistence:
+    {{- if .Values.rabbitmq.persistence }}
+    {{- if .Values.rabbitmq.persistence.enabled }}
+    storage: {{ .Values.rabbitmq.persistence.storage | default "10Gi" | quote }}
+    {{- if .Values.rabbitmq.persistence.storageClassName }}
+    storageClassName: {{ .Values.rabbitmq.persistence.storageClassName | quote }}
+    {{- end }}
+    {{- else if .Values.rabbitmq.persistence.emptyDir }}
+    storage: "0Gi"
+    {{- else }}
+    storage: "0Gi"
+    {{- end }}
+    {{- else }}
+    storage: "10Gi"
+    {{- end }}
+  
+  {{- if .Values.rabbitmq.affinity }}
+  affinity:
+    {{- toYaml .Values.rabbitmq.affinity | nindent 4 }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.tolerations }}
+  tolerations:
+    {{- toYaml .Values.rabbitmq.tolerations | nindent 4 }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.service }}
+  service:
+    type: {{ .Values.rabbitmq.service.type | default "ClusterIP" }}
+    {{- if .Values.rabbitmq.service.annotations }}
+    annotations:
+      {{- toYaml .Values.rabbitmq.service.annotations | nindent 6 }}
+    {{- end }}
+    {{- if .Values.rabbitmq.service.ipFamilyPolicy }}
+    ipFamilyPolicy: {{ .Values.rabbitmq.service.ipFamilyPolicy }}
+    {{- end }}
+    {{- if .Values.rabbitmq.service.labels }}
+    labels:
+      {{- toYaml .Values.rabbitmq.service.labels | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.tls.enabled }}
+  tls:
+    {{- if .Values.rabbitmq.tls.secretName }}
+    secretName: {{ .Values.rabbitmq.tls.secretName }}
+    {{- end }}
+    {{- if .Values.rabbitmq.tls.caSecretName }}
+    caSecretName: {{ .Values.rabbitmq.tls.caSecretName }}
+    {{- end }}
+    {{- if .Values.rabbitmq.tls.disableNonTLSListeners }}
+    disableNonTLSListeners: true
+    {{- end }}
+  {{- end }}
+  
+  {{- if or .Values.rabbitmq.auth.existingSecret .Values.rabbitmq.secretBackend.vault.enabled }}
+  # Reference to existing secret containing RabbitMQ credentials
+  # If not provided, the operator will auto-generate credentials
+  secretBackend:
+    {{- if .Values.rabbitmq.secretBackend.vault.enabled }}
+    vault:
+      role: {{ required "rabbitmq.secretBackend.vault.role is required when vault is enabled" .Values.rabbitmq.secretBackend.vault.role }}
+      {{- if .Values.rabbitmq.secretBackend.vault.annotations }}
+      annotations:
+        {{- toYaml .Values.rabbitmq.secretBackend.vault.annotations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.rabbitmq.secretBackend.vault.defaultUserPath }}
+      defaultUserPath: {{ .Values.rabbitmq.secretBackend.vault.defaultUserPath }}
+      {{- end }}
+      {{- if .Values.rabbitmq.secretBackend.vault.defaultUserUpdaterImage }}
+      defaultUserUpdaterImage: {{ .Values.rabbitmq.secretBackend.vault.defaultUserUpdaterImage }}
+      {{- end }}
+      {{- if .Values.rabbitmq.secretBackend.vault.tls }}
+      tls:
+        {{- toYaml .Values.rabbitmq.secretBackend.vault.tls | nindent 8 }}
+      {{- end }}
+    {{- else }}
+    externalSecret:
+      name: {{ .Values.rabbitmq.auth.existingSecret }}
+    {{- end }}
+  {{- end }}
+  
+  {{- if or .Values.rabbitmq.nodeSelector .Values.rabbitmq.override.service .Values.rabbitmq.override.statefulSet }}
+  override:
+    {{- if .Values.rabbitmq.override.service }}
+    service:
+      {{- toYaml .Values.rabbitmq.override.service | nindent 6 }}
+    {{- end }}
+    {{- if or .Values.rabbitmq.nodeSelector .Values.rabbitmq.override.statefulSet }}
+    statefulSet:
+      {{- if .Values.rabbitmq.override.statefulSet }}
+      {{- toYaml .Values.rabbitmq.override.statefulSet | nindent 6 }}
+      {{- else if .Values.rabbitmq.nodeSelector }}
+      spec:
+        template:
+          spec:
+            nodeSelector:
+              {{- toYaml .Values.rabbitmq.nodeSelector | nindent 14 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.terminationGracePeriodSeconds }}
+  terminationGracePeriodSeconds: {{ .Values.rabbitmq.terminationGracePeriodSeconds }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.delayStartSeconds }}
+  delayStartSeconds: {{ .Values.rabbitmq.delayStartSeconds }}
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.autoEnableAllFeatureFlags }}
+  autoEnableAllFeatureFlags: true
+  {{- end }}
+  
+  {{- if .Values.rabbitmq.skipPostDeploySteps }}
+  skipPostDeploySteps: true
+  {{- end }}
+
+{{- end }}

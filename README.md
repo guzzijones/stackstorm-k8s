@@ -15,6 +15,8 @@ It's more than welcome to fine-tune each component settings to fit specific avai
 ## Requirements
 * [Supported](https://kubernetes.io/releases/) [Kubernetes](https://kubernetes.io/docs/setup/) cluster
 * [Helm](https://docs.helm.sh/using_helm/#install-helm) `v3.5` or greater
+* [RabbitMQ Cluster Operator](https://www.rabbitmq.com/kubernetes/operator/operator-overview.html) installed in the cluster (if using in-cluster RabbitMQ)
+* RabbitMQ credentials secret created before installation (see [RabbitMQ Credentials Secret](#rabbitmq-credentials-secret) below)
 
 ## Usage
 1) Edit `values.yaml` with configuration for the StackStorm HA K8s cluster.
@@ -174,19 +176,136 @@ Helm chart settings, which might be fine-tuned via `values.yaml`.
 
 The deployment of MongoDB to the k8s cluster can be disabled by setting the mongodb-ha.enabled key in values.yaml to false.  *Note: Stackstorm relies heavily on connections to a MongoDB instance.  If the in-cluster deployment of MongoDB is disabled, a connection to an external instance of MongoDB must be configured.  The st2.config key in values.yaml provides a way to configure stackstorm.  See [Configure MongoDB](https://docs.stackstorm.com/install/config/config.html#configure-mongodb) for configuration details.*
 
-### [RabbitMQ HA Cluster](https://docs.stackstorm.com/latest/reference/ha.html#rabbitmq)
+### [RabbitMQ Cluster](https://docs.stackstorm.com/latest/reference/ha.html#rabbitmq)
 RabbitMQ is a message bus StackStorm relies on for inter-process communication and load distribution.
-External Helm Chart is used to deploy [RabbitMQ cluster](https://www.rabbitmq.com/clustering.html) in Highly Available mode.
-By default `3` nodes of RabbitMQ are deployed via K8s StatefulSet.
-For more advanced RabbitMQ configuration, please refer to bitnami [rabbitmq](https://github.com/bitnami/charts/tree/master/bitnami/rabbitmq)
-Helm chart repository, - all settings could be overridden via `values.yaml`.
+This chart uses the [RabbitMQ Cluster Operator](https://www.rabbitmq.com/kubernetes/operator/operator-overview.html) to deploy a RabbitMQ cluster in Highly Available mode.
 
-The deployment of RabbitMQ to the k8s cluster can be disabled by setting the rabbitmq-ha.enabled key in values.yaml to false.  *Note: Stackstorm relies heavily on connections to a RabbitMQ instance.  If the in-cluster deployment of RabbitMQ is disabled, a connection to an external instance of RabbitMQ must be configured.  The st2.config key in values.yaml provides a way to configure stackstorm.  See [Configure RabbitMQ](https://docs.stackstorm.com/install/config/config.html#configure-rabbitmq) for configuration details.*
+**Prerequisites:**
+1. The RabbitMQ Cluster Operator must be installed in your Kubernetes cluster before installing this chart. See the [operator installation guide](https://www.rabbitmq.com/kubernetes/operator/install-operator.html).
+2. You must create a Kubernetes Secret containing RabbitMQ credentials before installing this chart (see [RabbitMQ Credentials Secret](#rabbitmq-credentials-secret) below).
 
-### [redis](https://docs.stackstorm.com/latest/reference/ha.html#zookeeper-redis)
-StackStorm employs redis sentinel as a distributed coordination backend, required for st2 cluster components to work properly in HA scenario.
-`3` node Redis cluster with Sentinel enabled is deployed via external bitnami Helm chart dependency [redis](https://github.com/bitnami/charts/tree/master/bitnami/redis).
-As any other Helm dependency, it's possible to further configure it for specific scaling needs via `values.yaml`.
+By default, a `3`-node RabbitMQ cluster is deployed via the RabbitmqCluster custom resource. The cluster configuration can be customized via the `rabbitmq` section in `values.yaml`.
+
+The deployment of RabbitMQ to the k8s cluster can be disabled by setting the `rabbitmq.enabled` key in values.yaml to false. **Note:** StackStorm relies heavily on connections to a RabbitMQ instance. If the in-cluster deployment of RabbitMQ is disabled, a connection to an external instance of RabbitMQ must be configured. The `st2.config` key in values.yaml provides a way to configure StackStorm. See [Configure RabbitMQ](https://docs.stackstorm.com/install/config/config.html#configure-rabbitmq) for configuration details.
+
+#### RabbitMQ Credentials Secret
+**IMPORTANT:** You must create a Kubernetes Secret containing RabbitMQ credentials **before** installing this Helm chart. The chart will fail to install if this secret does not exist.
+
+The secret must contain the following keys:
+- `username`: RabbitMQ username (e.g., `st2admin`)
+- `password`: RabbitMQ password (strong password recommended)
+- `erlangCookie`: Erlang cookie for RabbitMQ cluster inter-node authentication (alphanumeric string, typically 20-40 characters)
+
+**Example: Creating the RabbitMQ credentials secret**
+
+```bash
+# Generate a strong password and erlang cookie
+RABBITMQ_PASSWORD=$(openssl rand -base64 32)
+ERLANG_COOKIE=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
+
+# Create the secret
+kubectl create secret generic rabbitmq-credentials \
+  --from-literal=username=st2admin \
+  --from-literal=password="${RABBITMQ_PASSWORD}" \
+  --from-literal=erlangCookie="${ERLANG_COOKIE}"
+```
+
+**Example: Creating the secret from a YAML file**
+
+```yaml
+# rabbitmq-credentials.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-credentials
+type: Opaque
+stringData:
+  username: st2admin
+  password: "your-strong-password-here"
+  erlangCookie: "your-alphanumeric-erlang-cookie-here"
+```
+
+```bash
+kubectl apply -f rabbitmq-credentials.yaml
+```
+
+**Configuring the secret name in values.yaml:**
+
+After creating the secret, reference it in your `values.yaml`:
+
+```yaml
+rabbitmq:
+  enabled: true
+  auth:
+    existingSecret: "rabbitmq-credentials"  # Name of the secret you created
+    usernameKey: "username"                 # Key in the secret for username
+    passwordKey: "password"                 # Key in the secret for password
+    erlangCookieKey: "erlangCookie"         # Key in the secret for erlang cookie
+```
+
+**Security Best Practices:**
+- Use strong, randomly generated passwords (minimum 32 characters recommended)
+- The erlangCookie must be an alphanumeric string (letters and numbers only, no special characters)
+- Store credentials securely and never commit them to version control
+- Consider using a secrets management solution like HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault
+- Rotate credentials regularly according to your security policies
+- Use Kubernetes RBAC to restrict access to the secret
+
+**Troubleshooting:**
+- If the chart fails to install with an error about missing secrets, verify the secret exists: `kubectl get secret rabbitmq-credentials`
+- Verify the secret contains the required keys: `kubectl describe secret rabbitmq-credentials`
+- Ensure the secret is in the same namespace where you're installing the chart
+- Check that the `rabbitmq.auth.existingSecret` value in your `values.yaml` matches the actual secret name
+
+### [Valkey](https://docs.stackstorm.com/latest/reference/ha.html#zookeeper-redis)
+StackStorm employs Valkey (Redis-compatible) as a distributed coordination backend, required for st2 cluster components to work properly in HA scenario.
+This chart uses the [Valkey Helm Chart](https://github.com/valkey-io/valkey-helm) to deploy a Valkey cluster in Highly Available mode.
+
+By default, a Valkey cluster with `1` master and `2` replicas (3 total nodes) is deployed. The cluster configuration can be customized via the `valkey` section in `values.yaml`.
+
+**Authentication:**
+Valkey authentication is enabled by default using ACL (Access Control Lists). You can configure authentication in two ways:
+
+1. **Using Kubernetes Secrets (Recommended for Production):**
+   ```bash
+   # Create a secret with Valkey credentials
+   kubectl create secret generic valkey-credentials \
+     --from-literal=default-password=YOUR_SECURE_PASSWORD
+   ```
+   
+   Then reference it in your `values.yaml`:
+   ```yaml
+   valkey:
+     auth:
+       enabled: true
+       usersExistingSecret: "valkey-credentials"
+       aclUsers:
+         default:
+           permissions: "~* &* +@all"
+           passwordKey: "default-password"
+   ```
+
+2. **Using inline passwords (for testing only):**
+   ```yaml
+   valkey:
+     auth:
+       enabled: true
+       aclUsers:
+         default:
+           permissions: "~* &* +@all"
+           password: "your-password-here"
+   ```
+
+**Disabling In-Cluster Valkey:**
+The deployment of Valkey to the k8s cluster can be disabled by setting the `valkey.enabled` key in values.yaml to false. **Note:** StackStorm HA mode relies on a coordination backend. If the in-cluster deployment of Valkey is disabled, a connection to an external Redis/Valkey instance must be configured. The `st2.config` key in values.yaml provides a way to configure StackStorm. See [Configure Coordination Backend](https://docs.stackstorm.com/install/config/config.html) for configuration details.
+
+**Configuration Options:**
+- **Replica Mode:** Enabled by default with 2 replicas for high availability
+- **Persistence:** 10Gi storage per replica (configurable)
+- **Resources:** 512Mi/500m requests, 1Gi/1000m limits (configurable)
+- **Pod Placement:** Supports affinity, nodeSelector, and tolerations
+
+For more advanced Valkey configuration options, refer to the [Valkey Helm Chart documentation](https://github.com/valkey-io/valkey-helm).
 
 ## Install custom st2 packs in the cluster
 There are two ways to install st2 packs in the k8s cluster.
