@@ -189,9 +189,6 @@ spec:
       initContainers:
       {{- include "stackstorm-ha.init-containers-wait-for-db" . | nindent 6 }}
       {{- include "stackstorm-ha.init-containers-wait-for-mq" . | nindent 6 }}
-      {{- if and .Values.st2.packs.images (not .Values.st2.packs.volumes.enabled) }}
-        {{- include "stackstorm-ha.packs-initContainers" . | nindent 6 }}
-      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.st2api.terminationGracePeriodSeconds | default 30 }}
       containers:
       - name: st2api
@@ -203,8 +200,15 @@ spec:
         ports:
         - containerPort: 9101
         # TODO: Add liveness/readiness probes (#3)
-        #livenessProbe:
-        #readinessProbe:
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - curl -s -o /dev/null -w "%{http_code}" 127.0.0.1:9101 || (curl -s 127.0.0.1:9101 | grep -q '{"faultstring":"Unauthorized - One of Token or API key required."}' && exit 0 || exit 1)
+          initialDelaySeconds: 30
+          periodSeconds: 30
+
         command:
           {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2api
