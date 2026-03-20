@@ -1,0 +1,49 @@
+{{- if .Values.st2.rbac.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-st2-db-init-script
+  labels: {{- include "stackstorm-ha.labels" (list $ "st2-db-init") | nindent 4 }}
+data:
+  st2-db-init.py: |
+    #!/opt/stackstorm/st2/bin/python
+    """
+    Initialize StackStorm database with base RBAC roles.
+    This script calls service_setup.db_setup() to inject base roles into the database.
+    """
+    import sys
+    import logging
+    from st2common import config
+    from st2common.rbac.migrations import run_all as run_all_rbac_migrations
+    from st2common.database_setup import db_setup
+
+    __all__ = ["main"]
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+
+    def main():
+        """Main function to initialize database with base RBAC roles."""
+        # Get config file arguments from command line
+        # Expected format: --config-file /etc/st2/st2.conf --config-file /etc/st2/st2.docker.conf ...
+        config_args = sys.argv[1:]
+        config.parse_args(config_args)
+        
+        logger.info("Starting database initialization with base RBAC roles...")
+        logger.info(f"Config arguments: {config_args}")
+        
+        # Call db_setup to initialize database with base roles
+        db_setup()
+        run_all_rbac_migrations()
+        
+        logger.info("Database initialization completed successfully!")
+        sys.exit(0)
+
+    if __name__ == "__main__":
+        main()
+{{- end }}

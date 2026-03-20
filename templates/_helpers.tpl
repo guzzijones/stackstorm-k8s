@@ -164,6 +164,21 @@ Reduce duplication of the st2.*.conf volume details
 - name: st2-config-vol
   mountPath: /etc/st2/st2.user.conf
   subPath: st2.user.conf
+{{- if and .Values.mongodbCommunity.enabled (index .Values "mongodbCommunity" "auth" "st2User" "existingSecret") }}
+- name: st2-mongodb-config-vol
+  mountPath: /etc/st2/st2.mongodb.conf
+  subPath: st2.secrets.conf
+{{- end }}
+{{- if and .Values.rabbitmq.enabled (index .Values "rabbitmq" "auth" "existingSecret") }}
+- name: st2-rabbitmq-config-vol
+  mountPath: /etc/st2/st2.rabbitmq.conf
+  subPath: st2.rabbitmq.conf
+{{- end }}
+{{- if and .Values.valkey.enabled .Values.valkey.auth.enabled .Values.valkey.auth.usersExistingSecret }}
+- name: st2-valkey-config-vol
+  mountPath: /etc/st2/st2.valkey.conf
+  subPath: st2.valkey.conf
+{{- end }}
 {{- if $.Values.st2.existingConfigSecret }}
 - name: st2-config-secrets-vol
   mountPath: /etc/st2/st2.secrets.conf
@@ -174,6 +189,21 @@ Reduce duplication of the st2.*.conf volume details
 - name: st2-config-vol
   configMap:
     name: {{ $.Release.Name }}-st2-config
+{{- if and .Values.mongodbCommunity.enabled (index .Values "mongodbCommunity" "auth" "st2User" "existingSecret") }}
+- name: st2-mongodb-config-vol
+  secret:
+    secretName: {{ $.Release.Name }}-st2-mongodb-config
+{{- end }}
+{{- if and .Values.rabbitmq.enabled (index .Values "rabbitmq" "auth" "existingSecret") }}
+- name: st2-rabbitmq-config-vol
+  secret:
+    secretName: {{ $.Release.Name }}-st2-rabbitmq-config
+{{- end }}
+{{- if and .Values.valkey.enabled .Values.valkey.auth.enabled .Values.valkey.auth.usersExistingSecret }}
+- name: st2-valkey-config-vol
+  secret:
+    secretName: {{ $.Release.Name }}-st2-valkey-config
+{{- end }}
 {{- if $.Values.st2.existingConfigSecret }}
 - name: st2-config-secrets-vol
   secret:
@@ -187,11 +217,20 @@ Reduce duplication of the st2.*.conf volume details
   {{- end }}
 {{- end -}}
 
-# Override CMD CLI parameters passed to the startup of all pods to add support for /etc/st2/st2.secrets.conf
+# Override CMD CLI parameters passed to the startup of all pods to add support for backend credential config files
 {{- define "stackstorm-ha.st2-config-file-parameters" -}}
 - --config-file=/etc/st2/st2.conf
 - --config-file=/etc/st2/st2.docker.conf
 - --config-file=/etc/st2/st2.user.conf
+{{- if and .Values.mongodbCommunity.enabled (index .Values "mongodbCommunity" "auth" "st2User" "existingSecret") }}
+- --config-file=/etc/st2/st2.mongodb.conf
+{{- end }}
+{{- if and .Values.rabbitmq.enabled (index .Values "rabbitmq" "auth" "existingSecret") }}
+- --config-file=/etc/st2/st2.rabbitmq.conf
+{{- end }}
+{{- if and .Values.valkey.enabled .Values.valkey.auth.enabled .Values.valkey.auth.usersExistingSecret }}
+- --config-file=/etc/st2/st2.valkey.conf
+{{- end }}
 {{- if $.Values.st2.existingConfigSecret }}
 - --config-file=/etc/st2/st2.secrets.conf
 {{- end }}

@@ -1,4 +1,96 @@
-{{- if and .Values.st2.rbac.enabled (not (.Values.jobs.skip | has "apply_rbac_definitions")) -}}
+{{- if and .Values.st2.rbac.enabled (not (.Values.jobs.skip | has "initialize_rbac")) -}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-job-st2-initialize-rbac
+  labels: {{- include "stackstorm-ha.labels" (list $ "st2-initialize-rbac") | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install, post-upgrade, post-rollback
+    helm.sh/hook-delete-policy: before-hook-creation
+    helm.sh/hook-weight: "4"
+  {{- if .Values.jobs.annotations }}
+    {{- toYaml .Values.jobs.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  template:
+    metadata:
+      name: job-st2-initialize-rbac
+      labels: {{- include "stackstorm-ha.labels" (list $ "st2-initialize-rbac") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
+        checksum/script: {{ include (print $.Template.BasePath "/configmaps_st2-db-init.yaml") . | sha256sum }}
+        checksum/rbac: {{ include (print $.Template.BasePath "/configmaps_rbac.yaml") . | sha256sum }}
+        {{- if .Values.jobs.annotations }}
+          {{- toYaml .Values.jobs.annotations | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
+      - name: {{ .Values.image.pullSecret }}
+      {{- end }}
+      initContainers:
+      {{- include "stackstorm-ha.init-containers-wait-for-db" . | nindent 6 }}
+      containers:
+      - name: st2-initialize-rbac
+        image: '{{ template "stackstorm-ha.imageRepository" . }}/st2actionrunner:{{ tpl (.Values.jobs.image.tag | default (.Values.st2actionrunner.image.tag | default .Values.image.tag)) . }}'
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- with .Values.securityContext }}
+        securityContext: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        command:
+          - /usr/bin/st2-db-init.py
+          {{- include "stackstorm-ha.st2-config-file-parameters" . | nindent 10 }}
+        {{- if .Values.jobs.env }}
+        env: {{- include "stackstorm-ha.customEnv" .Values.jobs | nindent 8 }}
+        {{- end }}
+        {{- if .Values.jobs.envFromSecrets }}
+        envFrom:
+        {{- range .Values.jobs.envFromSecrets }}
+        - secretRef:
+            name: {{ . }}
+        {{- end }}
+        {{- end }}
+        volumeMounts:
+        {{- include "stackstorm-ha.st2-config-volume-mounts" . | nindent 8 }}
+        - name: st2-db-init-script
+          mountPath: /usr/bin/st2-db-init.py
+          subPath: st2-db-init.py
+        {{- range $.Values.jobs.extra_volumes }}
+        - name: {{ required "Each volume must have a 'name' in jobs.extra_volumes" .name }}
+          {{- tpl (required "Each volume must have a 'mount' definition in jobs.extra_volumes" .mount | toYaml) $ | nindent 10 }}
+        {{- end }}
+      volumes:
+        {{- include "stackstorm-ha.st2-config-volume" . | nindent 8 }}
+        - name: st2-db-init-script
+          configMap:
+            name: {{ .Release.Name }}-st2-db-init-script
+            defaultMode: 0755
+        {{- range $.Values.jobs.extra_volumes }}
+        - name: {{ required "Each volume must have a 'name' in jobs.extra_volumes" .name }}
+          {{- tpl (required "Each volume must have a 'volume' definition in jobs.extra_volumes" .volume | toYaml) $ | nindent 10 }}
+        {{- end }}
+      restartPolicy: OnFailure
+    {{- if .Values.dnsPolicy }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+    {{- end }}
+    {{- with .Values.dnsConfig }}
+      dnsConfig: {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.podSecurityContext }}
+      securityContext: {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.jobs.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.jobs.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.jobs.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}
+{{- if and .Values.st2.rbac.enabled (not (.Values.jobs.skip | has "apply_rbac_definitions")) }}
 ---
 apiVersion: batch/v1
 kind: Job

@@ -106,9 +106,8 @@ spec:
     {{- end }}
   {{- end }}
   
-  {{- if or .Values.rabbitmq.auth.existingSecret .Values.rabbitmq.secretBackend.vault.enabled }}
-  # Reference to existing secret containing RabbitMQ credentials
-  # If not provided, the operator will auto-generate credentials
+  # Reference to existing secret containing RabbitMQ credentials (REQUIRED)
+  # Either rabbitmq.auth.existingSecret OR rabbitmq.secretBackend.vault must be configured
   secretBackend:
     {{- if .Values.rabbitmq.secretBackend.vault.enabled }}
     vault:
@@ -127,11 +126,12 @@ spec:
       tls:
         {{- toYaml .Values.rabbitmq.secretBackend.vault.tls | nindent 8 }}
       {{- end }}
-    {{- else }}
+    {{- else if .Values.rabbitmq.auth.existingSecret }}
     externalSecret:
       name: {{ .Values.rabbitmq.auth.existingSecret }}
+    {{- else }}
+    {{- fail "rabbitmq.auth.existingSecret is required when rabbitmq is enabled (unless using rabbitmq.secretBackend.vault)" }}
     {{- end }}
-  {{- end }}
   
   {{- if or .Values.rabbitmq.nodeSelector .Values.rabbitmq.override.service .Values.rabbitmq.override.statefulSet }}
   override:

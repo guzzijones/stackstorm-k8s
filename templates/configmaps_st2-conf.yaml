@@ -15,36 +15,25 @@ data:
     [system_user]
     user = {{ .Values.st2.system_user.user }}
     ssh_key_file = {{ tpl .Values.st2.system_user.ssh_key_file . }}
-    {{- if index .Values "valkey" "enabled" }}
-    [coordination]
-    url = redis://{{ template "stackstorm-ha.valkey-connection" $ }}
-    {{- end }}
-    {{- if index .Values "rabbitmq" "enabled" }}
-    [messaging]
-    url = amqp://${RABBITMQ_USERNAME}:${RABBITMQ_PASSWORD}@{{ .Release.Name }}-rabbitmq:5672/
-    {{- end }}
-    {{- if index .Values "mongodbCommunity" "enabled" }}
-    [database]
-    {{- if index .Values "mongodbCommunity" "auth" "enabled" }}
-    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/{{ required "mongodbCommunity.auth.database is required!" (index .Values "mongodbCommunity" "auth" "database") }}?authSource={{ required "mongodbCommunity.auth.database is required!" (index .Values "mongodbCommunity" "auth" "database") }}&replicaSet={{ index .Values "mongodbCommunity" "replicaSetName" }}
-    username = {{ required "mongodbCommunity.auth.username is required!" (index .Values "mongodbCommunity" "auth" "username") }}
-    password = ${MONGODB_PASSWORD}
-    db_name = {{ required "mongodbCommunity.auth.database is required!" (index .Values "mongodbCommunity" "auth" "database") }}
-    {{- else }}
-    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/?replicaSet={{ index .Values "mongodbCommunity" "replicaSetName" }}
-    {{- end }}
-    port = 27017
-    {{- else if index .Values "mongodb" "enabled" }}
+    {{- if index .Values "mongodb" "enabled" }}
     [database]
     {{- if index .Values "mongodb" "auth" "enabled" }}
-    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/{{ required "mongodb.auth.database is required!" (index .Values "mongodb" "auth" "database") }}?authSource={{ required "mongodb.auth.database is required!" (index .Values "mongodb" "auth" "database") }}&replicaSet={{ index .Values "mongodb" "replicaSetName" }}
-    username = {{ required "mongodb.auth.username is required!" (index .Values "mongodb" "auth" "username") }}
+    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/{{ required "mongodb.auth.database is required!" (index .Values "mongodb" "auth" "database") }}?authSource={{ required "mongodb.auth.database is required!" (index .Values "mongodb" "auth" "database") }}&replicaSet={{ .Release.Name }}-mongodb
+    username = {{ required "mongodb.auth.username is required!" (index .Values "mongodb.auth.username") }}
     password = {{ required "mongodb.auth.password is required!" (index .Values "mongodb" "auth" "password") }}
     db_name = {{ required "mongodb.auth.database is required!" (index .Values "mongodb" "auth" "database") }}
     {{- else }}
-    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/?replicaSet={{ index .Values "mongodb" "replicaSetName" }}
+    host = mongodb://{{ template "stackstorm-ha.mongodb-nodes" $ }}/?replicaSet={{ .Release.Name }}-mongodb
     {{- end }}
     port = {{ index .Values "mongodb" "service" "port" }}
+    {{- end }}
+    {{- if and .Values.rabbitmq.enabled (not (index .Values "rabbitmq" "auth" "existingSecret")) }}
+    [messaging]
+    url = amqp://guest:guest@{{ .Release.Name }}-rabbitmq:5672/
+    {{- end }}
+    {{- if and .Values.valkey.enabled (not .Values.valkey.auth.usersExistingSecret) }}
+    [coordination]
+    url = redis://{{ .Release.Name }}-valkey.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:6379
     {{- end }}
     {{- if ne "disable" (default "" .Values.st2.datastore_crypto_key) }}
     [keyvalue]

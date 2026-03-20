@@ -1,5 +1,4 @@
 {{- if index .Values "mongodbCommunity" "enabled" }}
-{{- $existingSecret := index .Values "mongodbCommunity" "auth" "existingSecret" | default (printf "%s-mongodb-auth" .Release.Name) }}
 ---
 apiVersion: mongodbcommunity.mongodb.com/v1
 kind: MongoDBCommunity
@@ -10,32 +9,52 @@ spec:
   members: {{ index .Values "mongodbCommunity" "members" }}
   type: ReplicaSet
   version: {{ index .Values "mongodbCommunity" "version" | quote }}
-  {{- if index .Values "mongodbCommunity" "auth" "enabled" }}
+  agent:
+    {{- with index .Values "mongodbCommunity" "agent" }}
+    logLevel: {{ .logLevel | default "INFO" }}
+    maxLogFileDurationHours: {{ .maxLogFileDurationHours | default 24 }}
+    {{- if .logRotate }}
+    {{- if .logRotate.enabled }}
+    logRotate:
+      sizeThresholdMB: {{ .logRotate.sizeThresholdMB | default "1000" | quote }}
+      timeThresholdHrs: {{ .logRotate.timeThresholdHrs | default 24 }}
+      numTotal: {{ .logRotate.numTotal | default 10 }}
+      numUncompressed: {{ .logRotate.numUncompressed | default 3 }}
+      percentOfDiskspace: {{ .logRotate.percentOfDiskspace | default "5.0" | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
   security:
     authentication:
-      modes: ["SCRAM"]
+      modes: {{ index .Values "mongodbCommunity" "auth" "modes" | toJson }}
   users:
-    - name: {{ index .Values "mongodbCommunity" "auth" "username" }}
-      db: {{ index .Values "mongodbCommunity" "auth" "database" }}
+    {{- with index .Values "mongodbCommunity" "auth" "st2User" }}
+    - name: {{ .name }}
+      db: {{ .database }}
       passwordSecretRef:
-        name: {{ $existingSecret }}
-        key: {{ index .Values "mongodbCommunity" "auth" "passwordKey" }}
-      roles:
-        - name: readWrite
-          db: {{ index .Values "mongodbCommunity" "auth" "database" }}
-        - name: clusterAdmin
-          db: admin
-      scramCredentialsSecretName: {{ .Release.Name }}-mongodb-scram
-    - name: admin
-      db: admin
+        name: {{ .existingSecret | required "mongodbCommunity.auth.st2User.existingSecret is required" }}
+        key: {{ .passwordSecretKey }}
+      roles: {{- toYaml .roles | nindent 8 }}
+      scramCredentialsSecretName: {{ $.Release.Name }}-mongodb-{{ .name }}-scram
+    {{- end }}
+    {{- with index .Values "mongodbCommunity" "auth" "adminUser" }}
+    - name: {{ .name }}
+      db: {{ .database }}
       passwordSecretRef:
-        name: {{ $existingSecret }}
-        key: {{ index .Values "mongodbCommunity" "auth" "rootPasswordKey" }}
-      roles:
-        - name: root
-          db: admin
-      scramCredentialsSecretName: {{ .Release.Name }}-mongodb-admin-scram
-  {{- end }}
+        name: {{ .existingSecret | required "mongodbCommunity.auth.adminUser.existingSecret is required" }}
+        key: {{ .passwordSecretKey }}
+      roles: {{- toYaml .roles | nindent 8 }}
+      scramCredentialsSecretName: {{ $.Release.Name }}-mongodb-{{ .name }}-scram
+    {{- end }}
+    {{- range index .Values "mongodbCommunity" "auth" "additionalUsers" }}
+    - name: {{ .name }}
+      db: {{ .database }}
+      passwordSecretRef:
+        name: {{ .existingSecret | required "Each additionalUser must have an existingSecret defined" }}
+        key: {{ .passwordSecretKey }}
+      roles: {{- toYaml .roles | nindent 8 }}
+      scramCredentialsSecretName: {{ $.Release.Name }}-mongodb-{{ .name }}-scram
+    {{- end }}
   {{- if index .Values "mongodbCommunity" "tls" "enabled" }}
     tls:
       enabled: true
@@ -49,16 +68,15 @@ spec:
       {{- end }}
   {{- end }}
   additionalMongodConfig:
-    storage.wiredTiger.engineConfig.journalCompressor: snappy
-    net.compression.compressors: snappy
-  {{- if index .Values "mongodbCommunity" "replicaSetName" }}
-    replication.replSetName: {{ index .Values "mongodbCommunity" "replicaSetName" }}
-  {{- end }}
+    storage:
+      wiredTiger:
+        engineConfig:
+          journalCompressor: zlib
   statefulSet:
     spec:
-      {{- if or (index .Values "mongodbCommunity" "nodeSelector") (index .Values "mongodbCommunity" "affinity") (index .Values "mongodbCommunity" "tolerations") (index .Values "mongodbCommunity" "resources") }}
       template:
         spec:
+          serviceAccountName: mongodb-database
           {{- with index .Values "mongodbCommunity" "nodeSelector" }}
           nodeSelector: {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -79,7 +97,6 @@ spec:
               resources: {{- toYaml . | nindent 16 }}
               {{- end }}
           {{- end }}
-      {{- end }}
       {{- if index .Values "mongodbCommunity" "persistence" "enabled" }}
       volumeClaimTemplates:
         - metadata:
@@ -101,6 +118,6 @@ spec:
             {{- end }}
             resources:
               requests:
-                storage: 2Gi
+                storage: {{ index .Values "mongodbCommunity" "persistence" "logsStorage" }}
       {{- end }}
 {{- end }}

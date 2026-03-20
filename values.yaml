@@ -1023,12 +1023,20 @@ jobs:
     #     - --tail
     #     - custom_pack.warn_about_upgrade
 
+# for a remote mongodb deployment, set st2.config.mongodb.host/port/user/password and disable in-cluster mongodb deployment by setting st2.mongodbCommunity.enabled to false
+mongodb:
+  enabled: false
+  authentication: false
+  host: "mongodb"
+  port: 27017
+  user: "st2-admin"
+  password: "CHANGE-ME-PLEASE"
 ##
 ## MongoDB Community Operator Configuration
 ##
 ## PREREQUISITE: MongoDB Community Operator must be installed in the cluster
-## Install CRDs: kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/mongodb/mongodb-kubernetes/1.7.0/public/crds.yaml 
-## Install Operator: kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/mongodb/mongodb-kubernetes/1.7.0/public/mongodb-kubernetes.yaml
+## Install CRDs: kubectl apply -f https://raw.githubusercontent.com/mongodb/mongodb-kubernetes/1.7.0/public/crds.yaml 
+## Install Operator: kubectl apply -f https://raw.githubusercontent.com/mongodb/mongodb-kubernetes/1.7.0/public/mongodb-kubernetes.yaml
 ##
 ## For MongoDBCommunity CRD reference:
 ## https://github.com/mongodb/mongodb-kubernetes-operator/blob/master/docs/deploy-configure.md
@@ -1038,44 +1046,114 @@ mongodbCommunity:
   # Specify your external [database] connection parameters under st2.config
   enabled: true
   
-  # MongoDB version - StackStorm currently supports maximum MongoDB v4.4
+  # MongoDB version
   version: "7.0.22"
   
   # Number of MongoDB replicas in the replica set
   members: 3
   
   # Name of the replica set
-  replicaSetName: rs0
   
   # Authentication configuration
+  # NOTE: The MongoDB Community Operator REQUIRES user definitions with passwords.
+  # This is a CRD requirement - users and security fields cannot be omitted.
   auth:
-    enabled: true
-    # Database for StackStorm
-    database: "st2"
-    # Username for StackStorm connections
-    username: "st2-admin"
+    # Authentication modes - controls whether MongoDB enforces authentication
+    # modes: ["SCRAM"] - Enforce SCRAM authentication (recommended for production)
+    # modes: [] - No authentication enforcement (development only)
+    modes: ["SCRAM"]
     
-    # IMPORTANT: Credentials should be stored in a Kubernetes secret, not in values.yaml
-    # Create the secret before installing this chart:
-    #
-    # Example using kubectl:
-    #   kubectl create secret generic mongodb-credentials \
-    #     --from-literal=password=YOUR_SECURE_ST2_PASSWORD \
-    #     --from-literal=rootPassword=YOUR_SECURE_ROOT_PASSWORD
-    #
-    # Name of existing Kubernetes secret containing MongoDB credentials
-    existingSecret: ""  # e.g., "mongodb-credentials"
-    # Keys within the secret (defaults shown below)
-    passwordKey: "password"
-    rootPasswordKey: "rootPassword"
+    # Required StackStorm application user configuration
+    # Each user must have a separate Kubernetes secret containing their password
+    st2User:
+      name: "st2-admin"
+      database: "st2"
+      # REQUIRED: Name of Kubernetes secret containing this user's password
+      # Example: Create the secret before installing this chart:
+      #   kubectl create secret generic mongodb-st2-user-secret \
+      #     --from-literal=password=YOUR_SECURE_ST2_PASSWORD
+      existingSecret: "mongodb-st2-user-secret"
+      # Key in the secret containing the password (default: "password")
+      passwordSecretKey: "password"
+      roles:
+        - name: readWrite
+          db: st2
+        - name: clusterAdmin
+          db: admin
+    
+    # Required MongoDB admin user configuration
+    # Each user must have a separate Kubernetes secret containing their password
+    adminUser:
+      name: "admin"
+      database: "admin"
+      # REQUIRED: Name of Kubernetes secret containing this user's password
+      # Example: Create the secret before installing this chart:
+      #   kubectl create secret generic mongodb-admin-user-secret \
+      #     --from-literal=password=YOUR_SECURE_ADMIN_PASSWORD
+      existingSecret: "mongodb-admin-user-secret"
+      # Key in the secret containing the password (default: "password")
+      passwordSecretKey: "password"
+      roles:
+        - name: root
+          db: admin
+    
+    # Optional: Additional MongoDB users
+    # Each user must have their own separate Kubernetes secret
+    additionalUsers: []
+      # Example additional users (each with their own secret):
+      # - name: "myapp-user"
+      #   database: "myapp"
+      #   # Create secret: kubectl create secret generic mongodb-myapp-user-secret --from-literal=password=MYAPP_PASSWORD
+      #   existingSecret: "mongodb-myapp-user-secret"
+      #   passwordSecretKey: "password"
+      #   roles:
+      #     - name: readWrite
+      #       db: myapp
+      # - name: "readonly-user"
+      #   database: "st2"
+      #   # Create secret: kubectl create secret generic mongodb-readonly-user-secret --from-literal=password=READONLY_PASSWORD
+      #   existingSecret: "mongodb-readonly-user-secret"
+      #   passwordSecretKey: "password"
+      #   roles:
+      #     - name: read
+      #       db: st2
   
   # Persistence configuration
   persistence:
     enabled: true
-    # Storage size per MongoDB pod
+    # Storage size per MongoDB pod (data volume)
     storage: "10Gi"
+    # Storage size for MongoDB logs volume
+    # MongoDB Community Operator requires a separate logs volume
+    logsStorage: "2Gi"
     # Optional: specify storageClassName (uses cluster default when empty)
     storageClassName: ""
+  
+  # Agent configuration (automation agent settings)
+  agent:
+    # Log level for the automation agent
+    logLevel: ERROR
+    # Maximum duration in hours for a single log file
+    maxLogFileDurationHours: 24
+    # Log rotation configuration
+    # Helps manage log file sizes and retention
+    logRotate:
+      # Enable log rotation (recommended for production)
+      enabled: true
+      # Rotate when log file reaches this size (in MB)
+      # Can be fractional (e.g., "0.5" for 512KB)
+      sizeThresholdMB: "1000"
+      # Rotate log files every N hours
+      timeThresholdHrs: 24
+      # Maximum number of log files to keep (total)
+      # Older files beyond this limit are deleted
+      numTotal: 10
+      # Number of recent log files to keep uncompressed
+      # Older files are compressed to save space
+      numUncompressed: 3
+      # Maximum percentage of disk space logs can consume
+      # Helps prevent logs from filling the disk
+      percentOfDiskspace: "90.0"
   
   # TLS configuration (disabled by default)
   tls:
@@ -1116,23 +1194,117 @@ rabbitmq:
   # Number of RabbitMQ nodes in the cluster (replicas)
   replicas: 3
   
-  # Authentication configuration
-  # If existingSecret is provided, the operator will use it for RabbitMQ credentials
-  # If empty, the operator will auto-generate credentials
+  # Authentication configuration (REQUIRED when rabbitmq.enabled is true)
+  # You must provide either:
+  #   1. rabbitmq.auth.existingSecret (Kubernetes secret), OR
+  #   2. rabbitmq.secretBackend.vault.enabled (Vault integration)
   # 
-  # The secret must contain three keys: username, password, erlangCookie
+  # The secret must contain four keys: username, password, default_user.conf, erlangCookie
   # 
   # Example: Create the secret before installing this chart:
   #   kubectl create secret generic rabbitmq-credentials \
-  #     --from-literal=username=admin \
+  #     --from-literal=username=st2-rabbitmq \
   #     --from-literal=password=YOUR_SECURE_PASSWORD \
-  #     --from-literal=erlangCookie=YOUR_SECURE_ERLANG_COOKIE
+  #     --from-literal=default_user.conf="default_user = st2-rabbitmq
+  # default_pass = YOUR_SECURE_PASSWORD" \
+  #     --from-literal=erlangCookie=$(openssl rand -base64 32)
+  #
+  # Or using a YAML file:
+  #   apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: rabbitmq-credentials
+  #   type: Opaque
+  #   stringData:
+  #     username: st2-rabbitmq
+  #     password: YOUR_SECURE_PASSWORD
+  #     default_user.conf: |
+  #       default_user = st2-rabbitmq
+  #       default_pass = YOUR_SECURE_PASSWORD
+  #     erlangCookie: YOUR_ERLANG_COOKIE_HERE
   #
   # The erlangCookie should be an alphanumeric string, typically 20-40 characters.
   # Generate a secure erlangCookie with: openssl rand -base64 32
+  #
+  # IMPORTANT: The RabbitMQ operator requires the default_user.conf key for authentication.
+  # StackStorm uses the username and password keys to connect to RabbitMQ.
+  #
+  # ============================================================================
+  # CRITICAL TIMING REQUIREMENT: CREATE SECRET BEFORE DEPLOYING RABBITMQ
+  # ============================================================================
+  #
+  # The RabbitMQ Cluster Operator only processes the default_user.conf file during
+  # the INITIAL database creation when the cluster is first deployed. If you create
+  # the credentials secret AFTER RabbitMQ has already been deployed, the operator
+  # will NOT create your specified user, and authentication will fail.
+  #
+  # WHY THIS HAPPENS:
+  # -----------------
+  # 1. The operator mounts the secret to /etc/rabbitmq/conf.d/11-default_user.conf
+  # 2. RabbitMQ only reads this file during initial database initialization
+  # 3. Once the database exists, RabbitMQ ignores changes to default_user.conf
+  # 4. If no secret exists at deployment time, RabbitMQ creates a random user
+  #    (e.g., "default_user_SMlHtAb1pNld-CNSmuQ") with a random password
+  # 5. Creating the secret later does NOT update or create users in the existing database
+  #
+  # SYMPTOMS OF LATE SECRET CREATION:
+  # ----------------------------------
+  # - StackStorm pods fail to connect to RabbitMQ with authentication errors
+  # - RabbitMQ logs show: "PLAIN login refused: user 'st2-rabbitmq' - invalid credentials"
+  # - The user specified in your secret does not exist in RabbitMQ
+  # - A random "default_user_*" user exists instead
+  #
+  # HOW TO FIX IF SECRET WAS CREATED LATE:
+  # ---------------------------------------
+  #
+  # Option 1: Manual User Creation (Recommended for existing deployments)
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # If you already have data in RabbitMQ and want to preserve it, manually create
+  # the user with the credentials from your secret:
+  #
+  # 1. Get the credentials from your secret:
+  #    USERNAME=$(kubectl get secret rabbitmq-credentials -o jsonpath='{.data.username}' | base64 -d)
+  #    PASSWORD=$(kubectl get secret rabbitmq-credentials -o jsonpath='{.data.password}' | base64 -d)
+  #
+  # 2. Exec into a RabbitMQ pod:
+  #    kubectl exec -it <rabbitmq-pod-name> -- bash
+  #
+  # 3. Create the user and set permissions:
+  #    rabbitmqctl add_user "$USERNAME" "$PASSWORD"
+  #    rabbitmqctl set_user_tags "$USERNAME" administrator
+  #    rabbitmqctl set_permissions -p / "$USERNAME" ".*" ".*" ".*"
+  #
+  # 4. Verify the user was created:
+  #    rabbitmqctl list_users
+  #
+  # 5. Restart StackStorm pods to reconnect with the new credentials:
+  #    kubectl rollout restart deployment -l app.kubernetes.io/component=stackstorm
+  #
+  # Option 2: Fresh Deployment (For new installations or when data can be lost)
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # If you don't need to preserve existing RabbitMQ data, perform a clean deployment:
+  #
+  # 1. Delete the RabbitMQ cluster:
+  #    kubectl delete rabbitmqcluster <cluster-name>
+  #
+  # 2. Delete the PersistentVolumeClaims to remove old data:
+  #    kubectl delete pvc -l app.kubernetes.io/name=<cluster-name>
+  #
+  # 3. Ensure your credentials secret exists:
+  #    kubectl get secret rabbitmq-credentials
+  #
+  # 4. Redeploy the Helm chart:
+  #    helm upgrade --install <release-name> <chart> -f values.yaml
+  #
+  # PREVENTION:
+  # -----------
+  # Always create the RabbitMQ credentials secret BEFORE deploying this Helm chart
+  # or before enabling rabbitmq.enabled=true. This ensures the operator can properly
+  # initialize the database with your specified credentials during first startup.
+  #
+  # ============================================================================
   auth:
-    existingSecret: ""  # e.g., "rabbitmq-credentials"
-  
+    existingSecret: ""  # e.g., "rabbitmq-credentials" (REQUIRED unless using Vault)
   # Persistence configuration
   persistence:
     enabled: true
@@ -1165,6 +1337,7 @@ rabbitmq:
   
   # Service configuration
   service:
+    port: 5672
     type: ClusterIP
     annotations: {}
     # IP family policy for dual-stack support
