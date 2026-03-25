@@ -30,9 +30,9 @@ details:
 dependencies:
   - name: external-dns
     version: 4.0.0
-    repository: @bitnami-mirror
+    repository: alias:bitnami-mirror
     condition: external-dns.enabled
   - name: valkey
     version: 0.9.3
-    repository: @valkey-mirror
+    repository: alias:valkey-mirror
     condition: valkey.enabled
