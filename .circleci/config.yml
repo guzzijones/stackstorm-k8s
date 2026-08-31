@@ -122,6 +122,8 @@ jobs:
             --set rabbitmq.resources.requests.memory=124Mi
             --set rabbitmq.persistence.enabled=false
             --set valkey.replica.replicas=1
+            --set valkey.resources.requests.cpu=100m
+            --set valkey.resources.requests.memory=124Mi
             .
       - run:
           name: Helm test
@@ -139,6 +141,8 @@ jobs:
             --set rabbitmq.resources.requests.memory=124Mi
             --set rabbitmq.persistence.enabled=false
             --set valkey.replica.replicas=1
+            --set valkey.resources.requests.cpu=100m
+            --set valkey.resources.requests.memory=124Mi
             stackstorm-ha .
       - run:
           name: Helm test with RBAC enabled
