@@ -39,34 +39,58 @@ jobs:
           command: |
             helm repo add bitnami-mirror https://charts.bitnami.com/bitnami
             helm repo add valkey-mirror https://valkey.io/valkey-helm/
+            helm repo add mongodb https://mongodb.github.io/helm-charts
       - run:
           name: Update stackstorm-ha chart dependencies
           command: helm dependency update
       - run:
-          # CI-only fakes: valkey auth is disabled and RabbitMQ credentials are
-          # supplied via a throwaway secret so --wait installs can render/boot.
-          # Production must instead set real valkey auth + rabbitmq.auth.existingSecret.
-          name: Create fake RabbitMQ credentials secret (CI only)
+          name: Install MongoDB Community Operator (CI)
+          # watchNamespace="*" makes the operator (installed in default) reconcile
+          # the MongoDBCommunity CR in the release namespace; bundles its CRD.
+          command: helm install community-operator mongodb/community-operator
+            --set operator.watchNamespace="*"
+            --wait
+      - run:
+          name: Install RabbitMQ Cluster Operator (CI)
+          command: kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml
+      - run:
+          name: Wait for operators to be ready
+          command: |
+            kubectl rollout status deploy/mongodb-kubernetes-operator --timeout=180s
+            kubectl -n rabbitmq-system rollout status deploy/rabbitmq-cluster-operator --timeout=180s
+      - run:
+          # CI-only fakes so --wait installs can render/boot. Production must instead
+          # set real valkey auth, real rabbitmq.auth.existingSecret, and real MongoDB
+          # user secrets (mongodbCommunity.auth.{st2User,adminUser}.existingSecret).
+          name: Create fake credentials secrets (CI only)
           command: |
             kubectl create secret generic st2-rabbitmq-ci \
               --from-literal=username=st2-rabbitmq \
               --from-literal=password=ci-fake-password \
               --from-literal=erlangCookie=ci-fake-erlang-cookie \
               --from-literal=default_user.conf=$'default_user = st2-rabbitmq\ndefault_pass = ci-fake-password'
+            kubectl create secret generic mongodb-st2-user-secret --from-literal=password=ci-fake-password
+            kubectl create secret generic mongodb-admin-user-secret --from-literal=password=ci-fake-password
       - run:
           name: Helm install stackstorm-ha chart
           command: helm install --timeout 15m0s --debug --wait --name-template stackstorm-ha
             --set valkey.auth.enabled=false
             --set rabbitmq.auth.existingSecret=st2-rabbitmq-ci
+            --set mongodbCommunity.members=1
+            --set rabbitmq.replicas=1
+            --set valkey.replica.replicas=1
             .
       - run:
           name: Helm test
           command: helm test stackstorm-ha
       - run:
           name: Helm upgrade with RBAC enabled
-          command: helm upgrade --set st2.rbac.enabled=true --timeout 5m0s --debug --wait
+          command: helm upgrade --set st2.rbac.enabled=true --timeout 15m0s --debug --wait
             --set valkey.auth.enabled=false
             --set rabbitmq.auth.existingSecret=st2-rabbitmq-ci
+            --set mongodbCommunity.members=1
+            --set rabbitmq.replicas=1
+            --set valkey.replica.replicas=1
             stackstorm-ha .
       - run:
           name: Helm test with RBAC enabled
