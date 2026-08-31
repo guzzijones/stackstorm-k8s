@@ -111,7 +111,7 @@ jobs:
             kubectl create secret generic mongodb-admin-user-secret --from-literal=password=ci-fake-password
       - run:
           name: Helm install stackstorm-ha chart
-          command: helm install --timeout 15m0s --debug --wait --name-template stackstorm-ha
+          command: helm install --timeout 3m0s --debug --wait --name-template stackstorm-ha
             --set valkey.auth.enabled=false
             --set rabbitmq.auth.existingSecret=st2-rabbitmq-ci
             --set mongodbCommunity.members=1
@@ -133,6 +133,51 @@ jobs:
       - run:
           name: Helm test with RBAC enabled
           command: helm test stackstorm-ha
+      - run:
+          when: on_fail
+          name: Diagnostics on failure
+          # Fires whenever a prior step fails (e.g. `helm install --wait` timing out
+          # because st2auth never becomes ready). Every command is best-effort so the
+          # dump always completes. Focus: pod state, events, logs, and the datastore
+          # dependencies (mongo/rabbitmq/valkey) that st2 pods block on at startup.
+          command: |
+            set +e
+            echo "==================== helm releases ===================="
+            helm list -A
+            echo "==================== helm status stackstorm-ha ===================="
+            helm status stackstorm-ha --show-resources
+            echo "==================== all pods (wide) ===================="
+            kubectl get pods -A -o wide
+            echo "==================== workloads ===================="
+            kubectl get sts,deploy,rs -A
+            echo "==================== recent events ===================="
+            kubectl get events -A --sort-by=.lastTimestamp | tail -n 80
+            echo "==================== MongoDBCommunity status ===================="
+            kubectl get mongodbcommunity -A -o wide
+            kubectl describe mongodbcommunity -A
+            echo "==================== RabbitmqCluster status ===================="
+            kubectl get rabbitmqclusters -A -o wide
+            kubectl describe rabbitmqclusters -A
+            echo "==================== PVCs / secrets (default) ===================="
+            kubectl get pvc -A
+            kubectl get secret -n default
+            echo "==================== describe + logs: non-running pods in default ===================="
+            for p in $(kubectl get pods -n default --no-headers 2>/dev/null | awk '$3!="Running" && $3!="Completed" {print $1}'); do
+              echo "----- describe pod/$p -----"
+              kubectl describe pod -n default "$p"
+              echo "----- logs pod/$p (all containers) -----"
+              kubectl logs -n default "$p" --all-containers --tail=150 --prefix
+              echo "----- previous logs pod/$p -----"
+              kubectl logs -n default "$p" --all-containers --previous --tail=150 --prefix
+            done
+            echo "==================== st2auth pod logs ===================="
+            for p in $(kubectl get pods -n default --no-headers -o custom-columns=:metadata.name 2>/dev/null | grep -i auth); do
+              echo "----- pod/$p -----"
+              kubectl describe pod -n default "$p"
+              kubectl logs -n default "$p" --all-containers --tail=200 --prefix
+              kubectl logs -n default "$p" --all-containers --previous --tail=200 --prefix
+            done
+            true
       - run:
           when: always
           name: Show created K8s resources
