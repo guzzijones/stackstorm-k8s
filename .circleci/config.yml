@@ -118,6 +118,9 @@ jobs:
             --set mongodbCommunity.resources.requests.cpu=100m
             --set mongodbCommunity.resources.requests.memory=124Mi
             --set rabbitmq.replicas=1
+            --set rabbitmq.resources.requests.cpu=100m
+            --set rabbitmq.resources.requests.memory=124Mi
+            --set rabbitmq.persistence.enabled=false
             --set valkey.replica.replicas=1
             .
       - run:
@@ -129,7 +132,12 @@ jobs:
             --set valkey.auth.enabled=false
             --set rabbitmq.auth.existingSecret=st2-rabbitmq-ci
             --set mongodbCommunity.members=1
+            --set mongodbCommunity.resources.requests.cpu=100m
+            --set mongodbCommunity.resources.requests.memory=124Mi
             --set rabbitmq.replicas=1
+            --set rabbitmq.resources.requests.cpu=100m
+            --set rabbitmq.resources.requests.memory=124Mi
+            --set rabbitmq.persistence.enabled=false
             --set valkey.replica.replicas=1
             stackstorm-ha .
       - run:
