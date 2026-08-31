@@ -35,6 +35,11 @@ jobs:
           name: Create new K8s cluster
           command: minikube start --vm-driver=docker --memory 8192 --cpus 4 --kubernetes-version=<< parameters.kubernetes-version >>
       - run:
+          name: Add mirror repos for aliased dependencies
+          command: |
+            helm repo add bitnami-mirror https://charts.bitnami.com/bitnami
+            helm repo add valkey-mirror https://valkey.io/valkey-helm/
+      - run:
           name: Update stackstorm-ha chart dependencies
           command: helm dependency update
       - run:

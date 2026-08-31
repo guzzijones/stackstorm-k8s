@@ -3,10 +3,16 @@ apiVersion: v2
 appVersion: "3.8"
 name: stackstorm-ha
 version: 1.1.6
-description: StackStorm K8s Helm Chart, optimized for running StackStorm in HA environment.
+description: >-
+  StackStorm K8s Helm Chart, optimized for running StackStorm in HA environment.
+  This Helm chart is a fully installable app that codifies StackStorm cluster
+  deployment optimized for HA and K8s environment. MongoDB-HA is deployed using
+  the MongoDB Community Operator (must be pre-installed), val-key operator, and
+  rabbitmq operator. For configuration details please check default values.yaml
+  and README.
 home: https://stackstorm.com/
 icon: https://landscape.cncf.io/logos/stack-storm.svg
-source:
+sources:
   - https://github.com/stackstorm/stackstorm-k8s
 keywords:
   - st2
@@ -23,13 +29,9 @@ maintainers:
   - name: The StackStorm Authors
     email: info@stackstorm.com
     url: https://github.com/StackStorm
-details:
-  This Helm chart is a fully installable app that codifies StackStorm cluster deployment optimized for HA and K8s environment.
-  MongoDB-HA is deployed using the MongoDB Community Operator (must be pre-installed), val-key operator, and rabbitmq operator
- For configuration details please check default values.yaml and README.
 dependencies:
   - name: external-dns
-    version: 4.0.0
+    version: "*"
     repository: alias:bitnami-mirror
     condition: external-dns.enabled
   - name: valkey
