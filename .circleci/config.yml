@@ -51,8 +51,27 @@ jobs:
             --set operator.watchNamespace="*"
             --wait
       - run:
+          name: Install cert-manager (CI)
+          # The RabbitMQ cluster-operator manifest ships cert-manager
+          # Certificate/Issuer resources for its serving+metrics TLS, so
+          # cert-manager (CRDs + webhook) must exist before applying it.
+          command: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+      - run:
+          name: Wait for cert-manager to be ready
+          command: |
+            kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
+            kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+            kubectl -n cert-manager rollout status deploy/cert-manager-cainjector --timeout=180s
+      - run:
           name: Install RabbitMQ Cluster Operator (CI)
-          command: kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml
+          # Retry to ride out cert-manager webhook warmup (Certificate/Issuer
+          # admission can briefly refuse connections right after rollout).
+          command: |
+            for i in 1 2 3 4 5 6; do
+              kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml && break
+              echo "apply failed (attempt $i), retrying in 10s..."
+              sleep 10
+            done
       - run:
           name: Wait for operators to be ready
           command: |
