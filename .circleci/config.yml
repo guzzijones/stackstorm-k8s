@@ -70,10 +70,13 @@ jobs:
             kubectl -n cert-manager rollout status deploy/cert-manager-cainjector --timeout=180s
       - run:
           name: Install MongoDB Community Operator (CI)
-          # CRDs are already installed above (community-operator-crds), so disable the
-          # chart's bundled CRDs. watchNamespace="*" lets the operator (in default)
-          # reconcile the MongoDBCommunity CR in the release namespace.
-          command: helm install community-operator mongodb/community-operator
+          # Install into its OWN namespace: the chart also renders a
+          # `mongodb-database` ServiceAccount/Role, which would otherwise collide
+          # in `default` with the one the stackstorm-ha release owns (its mongod
+          # pods use that SA). CRDs are installed above (community-operator-crds
+          # disabled). watchNamespace="*" still reconciles the CR in `default`.
+          command: helm install mongodb-operator mongodb/community-operator
+            --namespace mongodb-operator --create-namespace
             --set community-operator-crds.enabled=false
             --set operator.watchNamespace="*"
             --wait
@@ -91,7 +94,7 @@ jobs:
       - run:
           name: Wait for operators to be ready
           command: |
-            kubectl rollout status deploy/mongodb-kubernetes-operator --timeout=180s
+            kubectl -n mongodb-operator rollout status deploy/mongodb-kubernetes-operator --timeout=180s
             kubectl -n rabbitmq-system rollout status deploy/rabbitmq-cluster-operator --timeout=180s
       - run:
           # CI-only fakes so --wait installs can render/boot. Production must instead
