@@ -115,6 +115,8 @@ jobs:
             --set valkey.auth.enabled=false
             --set rabbitmq.auth.existingSecret=st2-rabbitmq-ci
             --set mongodbCommunity.members=1
+            --set mongodbCommunity.resources.requests.cpu=100m
+            --set mongodbCommunity.resources.requests.memory=512Mi
             --set rabbitmq.replicas=1
             --set valkey.replica.replicas=1
             .
