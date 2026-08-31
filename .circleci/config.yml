@@ -111,7 +111,7 @@ jobs:
             kubectl create secret generic mongodb-admin-user-secret --from-literal=password=ci-fake-password
       - run:
           name: Helm install stackstorm-ha chart
-          command: helm install --timeout 3m0s --debug --wait --name-template stackstorm-ha
+          command: helm install --timeout 5m0s --debug --wait --name-template stackstorm-ha
             --set valkey.auth.enabled=false
             --set rabbitmq.auth.existingSecret=st2-rabbitmq-ci
             --set mongodbCommunity.members=1

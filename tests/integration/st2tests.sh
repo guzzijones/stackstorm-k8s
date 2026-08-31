@@ -7,9 +7,9 @@ load "${BATS_HELPERS_DIR}/bats-file/load.bash"
 @test 'st2 version deployed and python env are as expected' {
   run st2 --version
   assert_success
-  # st2 3.7dev (4aac99ba8), on Python 3.8.10
+  # st2 3.9.0, on Python 3.10.12
   assert_line --partial "st2 ${ST2_VERSION}"
-  assert_line --partial 'on Python 3.8.10'
+  assert_line --partial 'on Python 3.10.12'
 }
 
 @test 'ST2_AUTH_URL service endpoint is accessible and working' {
